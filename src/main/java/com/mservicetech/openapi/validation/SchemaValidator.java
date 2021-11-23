@@ -19,6 +19,7 @@ package com.mservicetech.openapi.validation;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mservicetech.openapi.common.Status;
 import com.networknt.jsonoverlay.Overlay;
 import com.networknt.oas.model.OpenApi3;
 import com.networknt.oas.model.impl.OpenApi3Impl;
@@ -26,9 +27,10 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SchemaValidatorsConfig;
 import com.networknt.schema.ValidationMessage;
-import com.mservicetech.openapi.common.Status;
 
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
@@ -53,7 +55,6 @@ public class SchemaValidator {
      * Build a new validator with no API specification.
      * <p>
      * This will not perform any validation of $ref references that reference local schemas.
-     *
      */
     public SchemaValidator() {
         this(null);
@@ -67,7 +68,8 @@ public class SchemaValidator {
      */
     public SchemaValidator(final OpenApi3 api) {
         this.api = api;
-        this.jsonNode = Overlay.toJson((OpenApi3Impl)api).get("components");
+        this.jsonNode = Overlay.toJson((OpenApi3Impl) api)
+                .get("components");
         this.defaultConfig = new SchemaValidatorsConfig();
         this.defaultConfig.setTypeLoose(true);
     }
@@ -75,10 +77,9 @@ public class SchemaValidator {
     /**
      * Validate the given value against the given property schema.
      *
-     * @param value The value to validate
+     * @param value  The value to validate
      * @param schema The property schema to validate the value against
      * @param config The config model for some validator
-     *
      * @return A status containing error code and description
      */
     public Status validate(final Object value, final JsonNode schema, SchemaValidatorsConfig config) {
@@ -88,10 +89,10 @@ public class SchemaValidator {
     /**
      * Validate the given value against the given property schema.
      *
-     * @param value The value to validate
+     * @param value  The value to validate
      * @param schema The property schema to validate the value against
      * @param config The config model for some validator
-     * @param at The name of the property being validated
+     * @param at     The name of the property being validated
      * @return Status object
      */
     public Status validate(final Object value, final JsonNode schema, SchemaValidatorsConfig config, String at) {
@@ -112,19 +113,29 @@ public class SchemaValidator {
         Status status = null;
         Set<ValidationMessage> processingReport = null;
         try {
-            if(jsonNode != null) {
-                ((ObjectNode)schema).set(COMPONENTS_FIELD, jsonNode);
+            if (jsonNode != null) {
+                ((ObjectNode) schema).set(COMPONENTS_FIELD, jsonNode);
             }
-            JsonSchema jsonSchema = JsonSchemaFactory.getInstance().getSchema(schema, config);
+            JsonSchema jsonSchema = JsonSchemaFactory.getInstance()
+                    .getSchema(schema, config);
             final JsonNode content = objectMapper.valueToTree(value);
             processingReport = jsonSchema.validate(content, content, at);
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        if(processingReport != null && processingReport.size() > 0) {
-            ValidationMessage vm = processingReport.iterator().next();
-            status = new Status(VALIDATOR_SCHEMA, vm.getMessage());
+        if (processingReport != null && processingReport.size() > 0) {
+            if (config.isFailFast()) {
+                ValidationMessage vm = processingReport.iterator()
+                        .next();
+                status = new Status(VALIDATOR_SCHEMA, vm.getMessage());
+            } else {
+                List<String> messages = processingReport.stream()
+                        .map(ValidationMessage::getMessage)
+                        .collect(Collectors.toList());
+
+                status = new Status(VALIDATOR_SCHEMA, messages);
+            }
         }
 
         return status;
